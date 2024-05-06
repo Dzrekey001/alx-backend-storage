@@ -1,34 +1,52 @@
 #!/usr/bin/env python3
-""" expiring web cache module """
-
-import redis
+"""Web cache
+"""
 import requests
+import redis
 from typing import Callable
 from functools import wraps
 
-redis = redis.Redis()
+
+redis_instance = redis.Redis()
 
 
-def wrap_requests(fn: Callable) -> Callable:
-    """ Decorator wrapper """
+def count_url_calls(method: Callable) -> Callable:
+    """Count number of url calls and set expiration
 
-    @wraps(fn)
+    Args:
+        method (Callable): method to count
+
+    Returns:
+        Callable: method
+    """
+    key = method.__qualname__
+
+    @wraps(method)
     def wrapper(url):
-        """ Wrapper for decorator guy """
-        redis.incr(f"count:{url}")
-        cached_response = redis.get(f"cached:{url}")
-        if cached_response:
-            return cached_response.decode('utf-8')
-        result = fn(url)
-        redis.setex(f"cached:{url}", 10, result)
-        return result
+        cached_key = "cached:" + url
+        cached_data = redis_instance.get(cached_key)
+        if cached_data:
+            return cached_data.decode("utf-8")
 
+        count_key = "count:" + url
+        html = method(url)
+
+        redis_instance.incr(count_key)
+        redis_instance.set(cached_key, html)
+        redis_instance.expire(cached_key, 10)
+        return html
     return wrapper
 
 
-@wrap_requests
+@count_url_calls
 def get_page(url: str) -> str:
-    """get page self descriptive
+    """_summary_
+
+    Args:
+        url (str): url to request html
+
+    Returns:
+        str: html string
     """
-    response = requests.get(url)
-    return response.text
+    response = requests.get(url).text
+    return response
